@@ -88,30 +88,39 @@ else()
 endif()
 
 macro(link_to_llvm name is_standalone)
-  foreach(clang_lib ${CLANG_LIBS})
-    if(MSVC)
-      get_filename_component(LIB_FILENAME ${clang_lib} NAME)
-      if(LIB_FILENAME STREQUAL "clangFrontend.lib")
-        # On MSVC we don't link against clangFrontend.lib, instead we link against clang.exe (via clang.lib)
-        # Otherwise the clazy plugin would have it's own plugin registry and clang wouldn't see it.
-        # This way clazy registers with clang.
-        continue()
-      endif()
-    endif()
-
-    target_link_libraries(${name} ${clang_lib})
-  endforeach()
-
-  foreach(llvm_lib ${LLVM_LIBS})
-    if(NOT ${is_standalone} AND NOT APPLE AND NOT MINGW AND NOT MSVC)
-        ## Don't link against LLVMSupport, causes: CommandLine Error: Option 'view-background' registered more than once!
-        if (NOT llvm_lib MATCHES ".*LLVMSupport.*")
-            target_link_libraries(${name} ${llvm_lib})
+  # clang >= 9.0 can provide a single shared library instead of split ones.
+  if (CLANG_CLANG-CPP_LIB)
+    target_link_libraries(${name} clang-cpp)
+  else()
+    foreach(clang_lib ${CLANG_LIBS})
+      if(MSVC)
+        get_filename_component(LIB_FILENAME ${clang_lib} NAME)
+        if(LIB_FILENAME STREQUAL "clangFrontend.lib")
+          # On MSVC we don't link against clangFrontend.lib, instead we link against clang.exe (via clang.lib)
+          # Otherwise the clazy plugin would have it's own plugin registry and clang wouldn't see it.
+          # This way clazy registers with clang.
+          continue()
         endif()
-    else()
-        target_link_libraries(${name} ${llvm_lib})
-    endif()
-  endforeach()
+      endif()
+
+      target_link_libraries(${name} ${clang_lib})
+    endforeach()
+
+    foreach(llvm_lib ${LLVM_LIBS})
+      if(NOT ${is_standalone} AND NOT APPLE AND NOT MINGW AND NOT MSVC)
+          ## Don't link against LLVMSupport, causes: CommandLine Error: Option 'view-background' registered more than once!
+          if (NOT llvm_lib MATCHES ".*LLVMSupport.*")
+              target_link_libraries(${name} ${llvm_lib})
+          endif()
+      else()
+          target_link_libraries(${name} ${llvm_lib})
+      endif()
+    endforeach()
+
+    target_link_libraries(${name} clangTooling)
+    target_link_libraries(${name} clangToolingCore)
+    target_link_libraries(${name} ${clang_tooling_refactoring_lib})
+  endif()
 
   foreach(user_lib ${USER_LIBS})
     target_link_libraries(${name} ${user_lib})
@@ -123,14 +132,6 @@ macro(link_to_llvm name is_standalone)
 
   if(WIN32)
     target_link_libraries(${name} version.lib)
-  endif()
-  # clang >= 9.0 can provide a single shared library instead of split ones
-  if(CLANG_CLANG-CPP_LIB)
-    target_link_libraries(${name} clang-cpp)
-  else()
-    target_link_libraries(${name} clangTooling)
-    target_link_libraries(${name} clangToolingCore)
-    target_link_libraries(${name} ${clang_tooling_refactoring_lib})
   endif()
   if (CLAZY_USES_BOOST_REGEX)
     target_link_libraries(${name} ${Boost_LIBRARIES})
